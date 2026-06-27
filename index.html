@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MX Track Entry</title>
+
+<!-- ZXing for PDF417 barcode scanning -->
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
+
+<style>
+  :root {
+    --bg: #14181c;
+    --panel: #1f262d;
+    --panel-light: #2a323a;
+    --accent: #ff6a13;
+    --accent-dark: #d4570a;
+    --text: #f3f3f0;
+    --text-dim: #9aa3ab;
+    --good: #3ba55d;
+    --bad: #e0473c;
+    --border: #3a434c;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  header.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 2px 18px;
+  }
+
+  header.topbar .brand {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .gear-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 22px;
+    line-height: 1;
+    padding: 6px 8px;
+    cursor: pointer;
+  }
+
+  /* Progress dots */
+  .progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 18px;
+  }
+  .progress .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background 0.2s, transform 0.2s;
+  }
+  .progress .dot.active {
+    background: var(--accent);
+    transform: scale(1.25);
+  }
+  .progress .dot.done {
+    background: var(--good);
+  }
+  .progress .bar {
+    width: 18px; height: 2px;
+    background: var(--border);
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 20px;
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    animation: fadeIn 0.18s ease-out;
+  }
+  .card.active { display: flex; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  h1.card-title {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  p.card-sub {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin: 0 0 20px;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    margin-top: 18px;
+  }
+  label.req::after {
+    content: " *";
+    color: var(--accent);
+  }
+
+  input[type="text"],
+  input[type="tel"],
+  input[type="email"],
+  input[type="number"],
+  input[type="password"] {
+    width: 100%;
+    background: var(--panel-light);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 16px;
+    padding: 13px 14px;
+    border-radius: 10px;
+    outline: none;
+  }
+  input:focus {
+    border-color: var(--accent);
+  }
+  .field-error {
+    color: var(--bad);
+    font-size: 12.5px;
+    margin-top: 5px;
+    display: none;
+  }
+  .field-error.show { display: block; }
+
+  /* Bike quantity rows */
+  .qty-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--panel-light);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-top: 10px;
+  }
+  .qty-row .qty-label { font-size: 14.5px; }
+  .qty-row .qty-label .price { display: block; color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .qty-controls { display: flex; align-items: center; gap: 10px; }
+  .qty-btn {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 19px;
+    cursor: pointer;
+  }
+  .qty-controls input {
+    width: 46px;
+    text-align: center;
+    padding: 8px 4px;
+  }
+
+  .total-line {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .total-line .label { color: var(--text-dim); font-size: 14px; }
+  .total-line .amount { font-size: 28px; font-weight: 700; color: var(--accent); }
+
+  /* Buttons */
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 15px;
+    border-radius: 10px;
+    border: none;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+  }
+  .btn-primary { background: var(--accent); color: #1a1a1a; }
+  .btn-primary:active { background: var(--accent-dark); }
+  .btn-secondary { background: var(--panel-light); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-row { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 22px; }
+
+  /* Camera */
+  .scan-box {
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    position: relative;
+    display: none;
+  }
+  .scan-box.active { display: block; }
+  .scan-box video { width: 100%; display: block; }
+  .scan-status {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 12.5px;
+    padding: 8px 10px;
+    text-align: center;
+  }
+
+  .or-divider {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--text-dim); font-size: 12.5px;
+    margin: 16px 0 4px;
+  }
+  .or-divider::before, .or-divider::after {
+    content: ""; flex: 1; height: 1px; background: var(--border);
+  }
+
+  .handover {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 18px;
+  }
+  .handover .icon { font-size: 52px; }
+  .handover h2 { font-size: 24px; margin: 0; line-height: 1.3; }
+  .handover .amount-display { font-size: 34px; font-weight: 700; color: var(--accent); }
+  .handover p.note { color: var(--text-dim); font-size: 14px; max-width: 320px; }
+
+  .summary-box {
+    background: var(--panel-light);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-top: 16px;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .summary-box .row { display: flex; justify-content: space-between; }
+  .summary-box .row span:first-child { color: var(--text-dim); }
+
+  .checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: var(--panel-light);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 20px;
+    cursor: pointer;
+  }
+  .checkbox-row input { width: 22px; height: 22px; margin-top: 1px; flex-shrink: 0; }
+  .checkbox-row span { font-size: 14.5px; }
+
+  .restart-link {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-top: 14px;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .success-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 14px;
+  }
+  .success-screen .icon { font-size: 56px; color: var(--good); }
+
+  .banner {
+    background: var(--panel-light);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 4px;
+    display: none;
+  }
+  .banner.show { display: block; }
+  .banner.error { border-left-color: var(--bad); color: var(--bad); }
+
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2.5px solid rgba(0,0,0,0.25);
+    border-top-color: #1a1a1a;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .settings-section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    margin-top: 26px;
+    margin-bottom: 4px;
+  }
+  .settings-section-title:first-child { margin-top: 0; }
+
+  small.hint {
+    display: block;
+    color: var(--text-dim);
+    font-size: 12px;
+    margin-top: 5px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand" id="brandLabel">MX TRACK ENTRY</div>
+    <button class="gear-btn" id="settingsGearBtn" title="Settings" aria-label="Settings">&#9881;&#65039;</button>
+  </header>
+
+  <div class="progress" id="progressDots"></div>
+
+  <!-- CARD 1: Vehicle + bike quantities -->
+  <section class="card" id="card1">
+    <h1 class="card-title">Vehicle &amp; Entry</h1>
+    <p class="card-sub">Scan the license disc or enter the registration manually.</p>
+
+    <div id="bannerArea1"></div>
+
+    <button class="btn btn-secondary" id="scanBtn" type="button">📷 Scan License Disc Barcode</button>
+
+    <div class="scan-box" id="scanBox">
+      <video id="scanVideo" playsinline muted></video>
+      <div class="scan-status" id="scanStatus">Point camera at the PDF417 barcode…</div>
+    </div>
+    <button class="btn btn-danger" id="stopScanBtn" type="button" style="display:none; margin-top:10px;">Stop Camera</button>
+
+    <div class="or-divider">OR ENTER MANUALLY</div>
+
+    <label class="req" for="vehicleReg">Vehicle Registration</label>
+    <input type="text" id="vehicleReg" placeholder="e.g. LL62PSGP" autocomplete="off" autocapitalize="characters">
+    <div class="field-error" id="err-vehicleReg">Please enter the vehicle registration.</div>
+
+    <div class="settings-section-title">Number of motorcycles</div>
+
+    <div class="qty-row">
+      <div class="qty-label">85cc &amp; under<span class="price" id="smallPriceLabel">R150 / bike</span></div>
+      <div class="qty-controls">
+        <button class="qty-btn" type="button" data-qty="small" data-dir="-1">−</button>
+        <input type="number" id="smallQty" value="0" min="0" inputmode="numeric" readonly>
+        <button class="qty-btn" type="button" data-qty="small" data-dir="1">+</button>
+      </div>
+    </div>
+
+    <div class="qty-row">
+      <div class="qty-label">Over 85cc<span class="price" id="bigPriceLabel">R200 / bike</span></div>
+      <div class="qty-controls">
+        <button class="qty-btn" type="button" data-qty="big" data-dir="-1">−</button>
+        <input type="number" id="bigQty" value="0" min="0" inputmode="numeric" readonly>
+        <button class="qty-btn" type="button" data-qty="big" data-dir="1">+</button>
+      </div>
+    </div>
+
+    <div class="total-line">
+      <span class="label">Total entry fee</span>
+      <span class="amount" id="totalDisplay1">R0</span>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="next1Btn" type="button">Next</button>
+    </div>
+    <div class="restart-link" data-restart>Restart</div>
+  </section>
+
+  <!-- CARD 2: Client details -->
+  <section class="card" id="card2">
+    <h1 class="card-title">Client Details</h1>
+    <p class="card-sub">Total due: <strong id="totalDisplay2">R0</strong></p>
+
+    <label class="req" for="firstName">First Name</label>
+    <input type="text" id="firstName" autocomplete="given-name">
+    <div class="field-error" id="err-firstName">Please enter a first name.</div>
+
+    <label class="req" for="surname">Surname</label>
+    <input type="text" id="surname" autocomplete="family-name">
+    <div class="field-error" id="err-surname">Please enter a surname.</div>
+
+    <label class="req" for="phone">Telephone Number</label>
+    <input type="tel" id="phone" placeholder="0821234567" autocomplete="tel">
+    <div class="field-error" id="err-phone">Please enter a valid SA phone number (10 digits).</div>
+
+    <label for="email">Email Address <span style="color:var(--text-dim); font-weight:400;">(optional — for a receipt copy)</span></label>
+    <input type="email" id="email" autocomplete="email">
+    <div class="field-error" id="err-email">Please enter a valid email address.</div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="next2Btn" type="button">Next</button>
+      <button class="btn btn-secondary" data-back="1" type="button">Back</button>
+    </div>
+    <div class="restart-link" data-restart>Restart</div>
+  </section>
+
+  <!-- CARD 3: Handover screen -->
+  <section class="card" id="card3">
+    <div class="handover">
+      <div class="icon">📱➡️🧑</div>
+      <h2>Please return the device to the track admissions clerk</h2>
+      <div class="amount-display" id="amountDue3">R0</div>
+      <p class="note">The clerk will now verify payment and complete your entry registration.</p>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="next3Btn" type="button">Next</button>
+      <button class="btn btn-secondary" data-back="2" type="button">Back</button>
+    </div>
+    <div class="restart-link" data-restart>Restart</div>
+  </section>
+
+  <!-- CARD 4: Payment confirmation (clerk) -->
+  <section class="card" id="card4">
+    <h1 class="card-title">Confirm Payment</h1>
+    <p class="card-sub">For the track admissions clerk.</p>
+
+    <div class="summary-box" id="summaryBox4"></div>
+
+    <div class="settings-section-title">Pay by card</div>
+    <button class="btn btn-primary" id="payYocoBtn" type="button">💳 Pay with Yoco — <span id="yocoAmountLabel">R0</span></button>
+    <div id="yocoStatusArea" style="display:none; margin-top:10px;">
+      <div class="banner show" id="yocoStatusBanner"><span class="spinner" style="border-top-color:var(--accent); border-color:rgba(255,255,255,0.2);"></span>Waiting for payment to complete…</div>
+      <button class="btn btn-secondary" id="yocoRecheckBtn" type="button" style="display:none; margin-top:8px;">Check again</button>
+    </div>
+
+    <div class="or-divider">OR</div>
+
+    <label class="checkbox-row" for="paymentConfirm">
+      <input type="checkbox" id="paymentConfirm">
+      <span>Cash received — I confirm that payment of <strong id="confirmAmount4">R0</strong> has been received in full.</span>
+    </label>
+
+    <div id="bannerArea4"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="completeBtn" type="button" disabled>Complete</button>
+      <button class="btn btn-secondary" data-back="3" type="button">Back</button>
+    </div>
+    <div class="restart-link" data-restart>Restart</div>
+  </section>
+
+  <!-- CARD 5: Success -->
+  <section class="card" id="card5">
+    <div class="success-screen">
+      <div class="icon">✅</div>
+      <h2 style="margin:0;">Entry Complete</h2>
+      <p style="color:var(--text-dim); font-size:14px;">Receipt sent. Returning to start…</p>
+    </div>
+  </section>
+
+  <!-- SETTINGS CARD -->
+  <section class="card" id="cardSettings">
+    <h1 class="card-title">Settings</h1>
+    <p class="card-sub">PIN-protected — track admin only.</p>
+
+    <div id="settingsLockedView">
+      <label class="req" for="settingsPin">Enter PIN</label>
+      <input type="password" id="settingsPin" inputmode="numeric" autocomplete="off">
+      <div class="field-error" id="err-settingsPin">Incorrect PIN.</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="unlockSettingsBtn" type="button">Unlock</button>
+        <button class="btn btn-secondary" id="closeSettingsBtn1" type="button">Cancel</button>
+      </div>
+    </div>
+
+    <div id="settingsUnlockedView" style="display:none;">
+
+      <div class="settings-section-title">Track details</div>
+      <label for="cfgTrackName">Track Name</label>
+      <input type="text" id="cfgTrackName">
+
+      <label for="cfgTrackContact">Track Contact Number</label>
+      <input type="text" id="cfgTrackContact">
+
+      <label for="cfgAdminEmails">Admin Email(s)</label>
+      <input type="text" id="cfgAdminEmails" placeholder="admin@track.com, accounts@track.com">
+      <small class="hint">Comma-separated. Every address here gets the receipt.</small>
+
+      <div class="settings-section-title">Pricing</div>
+      <label for="cfgSmallPrice">85cc &amp; Under — Price per bike (R)</label>
+      <input type="number" id="cfgSmallPrice" min="0" inputmode="decimal">
+
+      <label for="cfgBigPrice">Over 85cc — Price per bike (R)</label>
+      <input type="number" id="cfgBigPrice" min="0" inputmode="decimal">
+
+      <div class="settings-section-title">Backend</div>
+      <label for="cfgSheetUrl">Google Apps Script Web App URL</label>
+      <input type="text" id="cfgSheetUrl" placeholder="https://script.google.com/macros/s/.../exec">
+      <small class="hint">From your Google Sheet's Apps Script deployment. See the setup guide.</small>
+
+      <label for="cfgAppUrl">This App's Web Address</label>
+      <input type="text" id="cfgAppUrl" placeholder="https://yourusername.github.io/mx-track-entry/">
+      <small class="hint">Your GitHub Pages URL. Needed so Yoco knows where to send the client back after paying.</small>
+
+      <div class="settings-section-title">Card Payments (Yoco)</div>
+      <label class="checkbox-row" for="cfgYocoEnabled" style="margin-top:0;">
+        <input type="checkbox" id="cfgYocoEnabled">
+        <span>Enable "Pay with Yoco" on the payment confirmation screen</span>
+      </label>
+      <small class="hint">The Yoco secret key itself is never entered here — it lives only in your Apps Script's Script Properties. See setup guide Part 6.</small>
+
+      <div class="settings-section-title">Security</div>
+      <label for="cfgNewPin">Change Settings PIN</label>
+      <input type="password" id="cfgNewPin" inputmode="numeric" placeholder="Leave blank to keep current PIN">
+
+      <div id="bannerAreaSettings"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="saveSettingsBtn" type="button">Save Settings</button>
+        <button class="btn btn-secondary" id="closeSettingsBtn2" type="button">Close</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============================================================
+     STATE & DEFAULT SETTINGS
+     ============================================================ */
+  var DEFAULTS = {
+    trackName: "Motocross Track",
+    trackContact: "",
+    adminEmails: "",
+    smallPrice: 150,
+    bigPrice: 200,
+    sheetUrl: "",
+    appUrl: "",
+    yocoEnabled: false,
+    pin: "1234"
+  };
+
+  var settings = loadSettings();
+
+  var state = {
+    vehicleReg: "",
+    smallQty: 0,
+    bigQty: 0,
+    firstName: "",
+    surname: "",
+    phone: "",
+    email: "",
+    geolocation: "Not available"
+  };
+
+  var CARD_ORDER = ["card1", "card2", "card3", "card4", "card5"];
+  var currentCardIndex = 0;
+
+  /* ============================================================
+     SETTINGS PERSISTENCE (localStorage)
+     ============================================================ */
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem("mxSettings");
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        return Object.assign({}, DEFAULTS, parsed);
+      }
+    } catch (e) {
+      console.warn("Could not load settings, using defaults.", e);
+    }
+    return Object.assign({}, DEFAULTS);
+  }
+
+  function saveSettingsToStorage() {
+    try {
+      localStorage.setItem("mxSettings", JSON.stringify(settings));
+    } catch (e) {
+      console.warn("Could not save settings.", e);
+    }
+  }
+
+  function applySettingsToUI() {
+    document.getElementById("brandLabel").textContent =
+      (settings.trackName || "MX TRACK").toUpperCase() + " ENTRY";
+    document.getElementById("smallPriceLabel").textContent = "R" + settings.smallPrice + " / bike";
+    document.getElementById("bigPriceLabel").textContent = "R" + settings.bigPrice + " / bike";
+  }
+
+  /* ============================================================
+     CARD NAVIGATION
+     ============================================================ */
+  function showCard(id) {
+    document.querySelectorAll(".card").forEach(function (c) {
+      c.classList.remove("active");
+    });
+    var target = document.getElementById(id);
+    if (target) target.classList.add("active");
+    renderProgress(id);
+    window.scrollTo(0, 0);
+  }
+
+  function renderProgress(activeId) {
+    var dotsContainer = document.getElementById("progressDots");
+    var idx = CARD_ORDER.indexOf(activeId);
+    if (idx === -1) {
+      dotsContainer.innerHTML = "";
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < CARD_ORDER.length; i++) {
+      var cls = "dot";
+      if (i < idx) cls += " done";
+      if (i === idx) cls += " active";
+      html += '<div class="' + cls + '"></div>';
+      if (i < CARD_ORDER.length - 1) html += '<div class="bar"></div>';
+    }
+    dotsContainer.innerHTML = html;
+  }
+
+  function goToCard(id) {
+    currentCardIndex = CARD_ORDER.indexOf(id);
+    showCard(id);
+  }
+
+  /* ============================================================
+     BANNER HELPER
+     ============================================================ */
+  function showBanner(areaId, message, isError) {
+    var area = document.getElementById(areaId);
+    if (!area) return;
+    area.innerHTML = '<div class="banner ' + (isError ? "error" : "") + ' show">' + message + "</div>";
+  }
+  function clearBanner(areaId) {
+    var area = document.getElementById(areaId);
+    if (area) area.innerHTML = "";
+  }
+
+  /* ============================================================
+     FIELD VALIDATION HELPERS
+     ============================================================ */
+  function setFieldError(fieldId, show) {
+    var err = document.getElementById("err-" + fieldId);
+    if (err) err.classList.toggle("show", !!show);
+    var input = document.getElementById(fieldId);
+    if (input) input.style.borderColor = show ? "var(--bad)" : "";
+  }
+
+  function isValidPhone(v) {
+    return /^0\d{9}$/.test(v.trim());
+  }
+  function isValidEmail(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+  }
+
+  /* ============================================================
+     PRICING / TOTAL
+     ============================================================ */
+  function computeTotal() {
+    var small = parseInt(document.getElementById("smallQty").value, 10) || 0;
+    var big = parseInt(document.getElementById("bigQty").value, 10) || 0;
+    var total = (small * Number(settings.smallPrice)) + (big * Number(settings.bigPrice));
+    return { small: small, big: big, total: total };
+  }
+
+  function refreshTotalDisplay() {
+    var t = computeTotal();
+    document.getElementById("totalDisplay1").textContent = "R" + t.total;
+  }
+
+  /* ============================================================
+     CARD 1: VEHICLE + QUANTITIES
+     ============================================================ */
+  function setupQtyButtons() {
+    document.querySelectorAll(".qty-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var which = btn.getAttribute("data-qty");
+        var dir = parseInt(btn.getAttribute("data-dir"), 10);
+        var input = document.getElementById(which === "small" ? "smallQty" : "bigQty");
+        var val = parseInt(input.value, 10) || 0;
+        val = Math.max(0, val + dir);
+        input.value = val;
+        refreshTotalDisplay();
+      });
+    });
+  }
+
+  function validateCard1() {
+    var reg = document.getElementById("vehicleReg").value.trim();
+    var ok = true;
+    if (!reg) {
+      setFieldError("vehicleReg", true);
+      ok = false;
+    } else {
+      setFieldError("vehicleReg", false);
+    }
+    var t = computeTotal();
+    if (t.small === 0 && t.big === 0) {
+      showBanner("bannerArea1", "Please add at least one motorcycle.", true);
+      ok = false;
+    } else {
+      clearBanner("bannerArea1");
+    }
+    return ok;
+  }
+
+  document.getElementById("next1Btn").addEventListener("click", function () {
+    if (!validateCard1()) return;
+    state.vehicleReg = document.getElementById("vehicleReg").value.trim();
+    var t = computeTotal();
+    state.smallQty = t.small;
+    state.bigQty = t.big;
+    state.total = t.total;
+    document.getElementById("totalDisplay2").textContent = "R" + t.total;
+    goToCard("card2");
+  });
+
+  /* ============================================================
+     CARD 2: CLIENT DETAILS
+     ============================================================ */
+  function validateCard2() {
+    var ok = true;
+    var first = document.getElementById("firstName").value.trim();
+    var sur = document.getElementById("surname").value.trim();
+    var phone = document.getElementById("phone").value.trim();
+    var email = document.getElementById("email").value.trim();
+
+    setFieldError("firstName", !first); if (!first) ok = false;
+    setFieldError("surname", !sur); if (!sur) ok = false;
+
+    if (!isValidPhone(phone)) { setFieldError("phone", true); ok = false; }
+    else setFieldError("phone", false);
+
+    if (email && !isValidEmail(email)) { setFieldError("email", true); ok = false; }
+    else setFieldError("email", false);
+
+    return ok;
+  }
+
+  document.getElementById("next2Btn").addEventListener("click", function () {
+    if (!validateCard2()) return;
+    state.firstName = document.getElementById("firstName").value.trim();
+    state.surname = document.getElementById("surname").value.trim();
+    state.phone = document.getElementById("phone").value.trim();
+    state.email = document.getElementById("email").value.trim();
+    document.getElementById("amountDue3").textContent = "R" + state.total;
+    goToCard("card3");
+  });
+
+  /* ============================================================
+     CARD 3: HANDOVER
+     ============================================================ */
+  document.getElementById("next3Btn").addEventListener("click", function () {
+    renderSummaryCard4();
+    goToCard("card4");
+  });
+
+  /* ============================================================
+     CARD 4: PAYMENT CONFIRMATION
+     ============================================================ */
+  function renderSummaryCard4() {
+    var box = document.getElementById("summaryBox4");
+    box.innerHTML =
+      row("Vehicle Reg", state.vehicleReg) +
+      row("85cc & under", state.smallQty + " bike(s)") +
+      row("Over 85cc", state.bigQty + " bike(s)") +
+      row("Client", state.firstName + " " + state.surname) +
+      row("Phone", state.phone) +
+      row("Email", state.email || "—");
+    document.getElementById("confirmAmount4").textContent = "R" + state.total;
+    document.getElementById("yocoAmountLabel").textContent = "R" + state.total;
+    updateYocoButtonVisibility();
+
+    function row(label, value) {
+      return '<div class="row"><span>' + label + '</span><span>' + value + "</span></div>";
+    }
+  }
+
+  document.getElementById("paymentConfirm").addEventListener("change", function () {
+    refreshCompleteButtonState();
+  });
+
+  document.getElementById("completeBtn").addEventListener("click", function () {
+    submitEntry();
+  });
+
+  /* ============================================================
+     YOCO CARD PAYMENT
+     ============================================================ */
+  var yocoPollTimer = null;
+  var yocoPaymentConfirmed = false;
+  var currentCheckoutId = null;
+  var currentPaymentReference = null;
+
+  function updateYocoButtonVisibility() {
+    var btn = document.getElementById("payYocoBtn");
+    var divider = document.querySelector("#card4 .or-divider");
+    var show = !!settings.yocoEnabled && !!settings.sheetUrl;
+    btn.style.display = show ? "block" : "none";
+    if (divider) divider.style.display = show ? "flex" : "none";
+  }
+
+  function refreshCompleteButtonState() {
+    var cashChecked = document.getElementById("paymentConfirm").checked;
+    document.getElementById("completeBtn").disabled = !(cashChecked || yocoPaymentConfirmed);
+  }
+
+  document.getElementById("payYocoBtn").addEventListener("click", function () {
+    startYocoCheckout();
+  });
+
+  function startYocoCheckout() {
+    var btn = document.getElementById("payYocoBtn");
+    btn.disabled = true;
+    btn.textContent = "Creating payment…";
+    clearBanner("bannerArea4");
+
+    var reference = "MX-" + state.vehicleReg.replace(/\s+/g, "") + "-" + new Date().getTime();
+    currentPaymentReference = reference;
+    var base = settings.appUrl || (window.location.origin + window.location.pathname);
+
+    var payload = {
+      action: "createYocoCheckout",
+      total: state.total,
+      vehicleReg: state.vehicleReg,
+      reference: reference,
+      successUrl: base,
+      cancelUrl: base,
+      failureUrl: base
+    };
+
+    fetch(settings.sheetUrl + "?action=createYocoCheckout", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (result) {
+        if (result.result !== "success") {
+          throw new Error(result.message || "Could not create the Yoco checkout.");
+        }
+        currentCheckoutId = result.checkoutId;
+        state.yocoCheckoutId = result.checkoutId;
+        btn.textContent = "Waiting for payment…";
+        window.open(result.redirectUrl, "_blank");
+        beginPollingYocoStatus();
+      })
+      .catch(function (err) {
+        console.error("Yoco checkout error:", err);
+        showBanner("bannerArea4", "Could not start the card payment: " + err.message, true);
+        resetYocoButton();
+      });
+  }
+
+  function beginPollingYocoStatus() {
+    document.getElementById("yocoStatusArea").style.display = "block";
+    document.getElementById("yocoStatusBanner").innerHTML =
+      '<span class="spinner" style="border-top-color:var(--accent); border-color:rgba(255,255,255,0.2);"></span>Waiting for payment to complete…';
+
+    var attempts = 0;
+    var maxAttempts = 60; // ~5 minutes at 5s intervals
+
+    clearInterval(yocoPollTimer);
+    document.getElementById("yocoRecheckBtn").style.display = "none";
+
+    yocoPollTimer = setInterval(function () {
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(yocoPollTimer);
+        document.getElementById("yocoStatusBanner").textContent =
+          "Still waiting — if the client has paid, tap 'Check again', or use cash confirmation instead.";
+        document.getElementById("yocoRecheckBtn").style.display = "block";
+        return;
+      }
+
+      pollYocoStatusOnce();
+    }, 5000);
+  }
+
+  function pollYocoStatusOnce() {
+      fetch(settings.sheetUrl + "?action=checkYocoStatus&checkoutId=" + encodeURIComponent(currentCheckoutId))
+        .then(function (res) { return res.json(); })
+        .then(function (result) {
+          if (result.status === "paid") {
+            clearInterval(yocoPollTimer);
+            yocoPaymentConfirmed = true;
+            document.getElementById("yocoStatusBanner").innerHTML =
+              "✅ Payment confirmed via Yoco.<br><span style='color:var(--text-dim); font-size:12px;'>Ref: " + currentPaymentReference + "</span>";
+            document.getElementById("yocoRecheckBtn").style.display = "none";
+            document.getElementById("payYocoBtn").textContent = "✅ Paid via Yoco";
+            refreshCompleteButtonState();
+          } else if (result.status === "failed") {
+            clearInterval(yocoPollTimer);
+            document.getElementById("yocoStatusBanner").textContent =
+              "Payment failed or was cancelled. Try again, or use cash confirmation.";
+            document.getElementById("yocoRecheckBtn").style.display = "none";
+            resetYocoButton();
+          }
+          // "pending" — keep polling silently.
+        })
+        .catch(function (err) {
+          console.warn("Status poll error (will retry):", err);
+        });
+  }
+
+  document.getElementById("yocoRecheckBtn").addEventListener("click", function () {
+    pollYocoStatusOnce();
+  });
+
+  function resetYocoButton() {
+    var btn = document.getElementById("payYocoBtn");
+    btn.disabled = false;
+    btn.innerHTML = '💳 Pay with Yoco — <span id="yocoAmountLabel">R' + state.total + '</span>';
+  }
+
+  /* ============================================================
+     SUBMIT: SHEET + EMAILS (via Google Apps Script)
+     ============================================================ */
+  function submitEntry() {
+    var btn = document.getElementById("completeBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Sending…';
+    clearBanner("bannerArea4");
+
+    var payload = {
+      dateTime: new Date().toLocaleString(),
+      vehicleReg: state.vehicleReg,
+      smallQty: state.smallQty,
+      bigQty: state.bigQty,
+      smallPrice: settings.smallPrice,
+      bigPrice: settings.bigPrice,
+      total: state.total,
+      firstName: state.firstName,
+      surname: state.surname,
+      phone: state.phone,
+      email: state.email,
+      geolocation: state.geolocation,
+      trackName: settings.trackName,
+      trackContact: settings.trackContact,
+      adminEmails: settings.adminEmails,
+      paymentMethod: yocoPaymentConfirmed ? "Yoco (card)" : "Cash/Manual",
+      paymentReference: yocoPaymentConfirmed ? (currentPaymentReference || "") : "",
+      yocoCheckoutId: yocoPaymentConfirmed ? (currentCheckoutId || "") : ""
+    };
+
+    if (!settings.sheetUrl) {
+      finishSubmit(true, "No backend URL configured — entry not saved. Set it up in Settings.");
+      return;
+    }
+
+    fetch(settings.sheetUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    })
+      .then(function () {
+        // Apps Script web apps under "Anyone" access don't always return
+        // readable CORS responses to fetch() — treat the request firing
+        // without a network-level rejection as success.
+        finishSubmit(false, "");
+      })
+      .catch(function (err) {
+        console.error("Submit error:", err);
+        finishSubmit(true, "Could not reach the server. Check your internet connection and try again.");
+      });
+  }
+
+  function finishSubmit(isError, message) {
+    var btn = document.getElementById("completeBtn");
+    btn.innerHTML = "Complete";
+
+    if (isError) {
+      btn.disabled = false;
+      showBanner("bannerArea4", message, true);
+      return;
+    }
+
+    goToCard("card5");
+    setTimeout(restartForm, 3000);
+  }
+
+  /* ============================================================
+     RESTART
+     ============================================================ */
+  function restartForm() {
+    state = { vehicleReg: "", smallQty: 0, bigQty: 0, firstName: "", surname: "", phone: "", email: "", geolocation: state.geolocation };
+
+    document.getElementById("vehicleReg").value = "";
+    document.getElementById("smallQty").value = 0;
+    document.getElementById("bigQty").value = 0;
+    document.getElementById("firstName").value = "";
+    document.getElementById("surname").value = "";
+    document.getElementById("phone").value = "";
+    document.getElementById("email").value = "";
+    document.getElementById("paymentConfirm").checked = false;
+    document.getElementById("completeBtn").disabled = true;
+
+    // Reset Yoco payment state.
+    clearInterval(yocoPollTimer);
+    yocoPaymentConfirmed = false;
+    currentCheckoutId = null;
+    currentPaymentReference = null;
+    document.getElementById("yocoStatusArea").style.display = "none";
+    document.getElementById("yocoRecheckBtn").style.display = "none";
+    resetYocoButton();
+
+    ["vehicleReg", "firstName", "surname", "phone", "email"].forEach(function (f) {
+      setFieldError(f, false);
+    });
+    clearBanner("bannerArea1");
+    clearBanner("bannerArea4");
+    refreshTotalDisplay();
+    stopScanning();
+    goToCard("card1");
+  }
+
+  document.querySelectorAll("[data-restart]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      if (confirm("Restart the form? Any entered details will be lost.")) {
+        restartForm();
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-back]").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var targetIdx = parseInt(el.getAttribute("data-back"), 10);
+      goToCard(CARD_ORDER[targetIdx - 1]);
+    });
+  });
+
+  /* ============================================================
+     BARCODE SCANNING (ZXing) — with manual entry always available
+     ============================================================ */
+  var codeReader = null;
+  var scanning = false;
+
+  function zxingAvailable() {
+    return typeof ZXing !== "undefined";
+  }
+
+  document.getElementById("scanBtn").addEventListener("click", function () {
+    if (!zxingAvailable()) {
+      showBanner("bannerArea1", "Barcode scanner failed to load. Please enter the registration manually below.", true);
+      return;
+    }
+    startScanning();
+  });
+
+  document.getElementById("stopScanBtn").addEventListener("click", stopScanning);
+
+  function startScanning() {
+    var video = document.getElementById("scanVideo");
+    var scanBox = document.getElementById("scanBox");
+    var statusEl = document.getElementById("scanStatus");
+
+    try {
+      var hints = new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.PDF_417]);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+      codeReader = new ZXing.BrowserMultiFormatReader(hints);
+      scanning = true;
+      scanBox.classList.add("active");
+      document.getElementById("scanBtn").style.display = "none";
+      document.getElementById("stopScanBtn").style.display = "block";
+      statusEl.textContent = "Point camera at the PDF417 barcode…";
+
+      codeReader.decodeFromConstraints(
+        { video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } },
+        video,
+        function (result, err) {
+          if (result) {
+            handleScanResult(result.getText());
+          }
+          // NotFoundException fires continuously while no barcode is found —
+          // this is expected and not an error; ignore it.
+        }
+      );
+    } catch (err) {
+      console.error("Camera start failed:", err);
+      showBanner("bannerArea1", "Could not access the camera. Please enter the registration manually below.", true);
+      stopScanning();
+    }
+  }
+
+  function stopScanning() {
+    scanning = false;
+    if (codeReader) {
+      try { codeReader.reset(); } catch (e) { /* ignore */ }
+      codeReader = null;
+    }
+    document.getElementById("scanBox").classList.remove("active");
+    document.getElementById("scanBtn").style.display = "block";
+    document.getElementById("stopScanBtn").style.display = "none";
+  }
+
+  function handleScanResult(rawText) {
+    // SA license disc PDF417 data is % separated; the vehicle reg sits
+    // between the 6th and 7th % symbol (index 6 when split on "%").
+    var parts = rawText.split("%");
+    var reg = (parts[6] || "").trim();
+
+    if (!reg) {
+      // Don't give up — keep scanning, this read was incomplete/garbled.
+      return;
+    }
+
+    stopScanning();
+    var field = document.getElementById("vehicleReg");
+    field.value = reg;
+    setFieldError("vehicleReg", false);
+
+    // Flash confirmation, then move focus to quantity entry.
+    field.style.borderColor = "var(--good)";
+    setTimeout(function () { field.style.borderColor = ""; }, 1000);
+
+    setTimeout(function () {
+      // Quantity inputs are readonly (stepper-controlled); focus the
+      // first stepper's + button instead so it's obviously interactive.
+      var firstPlusBtn = document.querySelector('.qty-btn[data-qty="small"][data-dir="1"]');
+      if (firstPlusBtn) firstPlusBtn.focus();
+    }, 150);
+  }
+
+  /* ============================================================
+     GEOLOCATION (best-effort, never blocks the flow)
+     ============================================================ */
+  function tryGetLocation() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        state.geolocation = pos.coords.latitude.toFixed(5) + ", " + pos.coords.longitude.toFixed(5);
+      },
+      function () { /* permission denied or unavailable — keep default */ },
+      { timeout: 8000 }
+    );
+  }
+
+  /* ============================================================
+     SETTINGS PANEL
+     ============================================================ */
+  document.getElementById("settingsGearBtn").addEventListener("click", openSettings);
+  document.getElementById("closeSettingsBtn1").addEventListener("click", closeSettings);
+  document.getElementById("closeSettingsBtn2").addEventListener("click", closeSettings);
+
+  var settingsReturnCard = "card1";
+
+  function openSettings() {
+    settingsReturnCard = CARD_ORDER[currentCardIndex] || "card1";
+    document.getElementById("settingsPin").value = "";
+    setFieldError("settingsPin", false);
+    document.getElementById("settingsLockedView").style.display = "block";
+    document.getElementById("settingsUnlockedView").style.display = "none";
+    document.getElementById("progressDots").innerHTML = "";
+    showCardRaw("cardSettings");
+  }
+
+  function showCardRaw(id) {
+    document.querySelectorAll(".card").forEach(function (c) { c.classList.remove("active"); });
+    document.getElementById(id).classList.add("active");
+    window.scrollTo(0, 0);
+  }
+
+  function closeSettings() {
+    goToCard(settingsReturnCard);
+  }
+
+  document.getElementById("unlockSettingsBtn").addEventListener("click", function () {
+    var entered = document.getElementById("settingsPin").value;
+    if (entered === String(settings.pin)) {
+      populateSettingsForm();
+      document.getElementById("settingsLockedView").style.display = "none";
+      document.getElementById("settingsUnlockedView").style.display = "block";
+    } else {
+      setFieldError("settingsPin", true);
+    }
+  });
+
+  function populateSettingsForm() {
+    document.getElementById("cfgTrackName").value = settings.trackName || "";
+    document.getElementById("cfgTrackContact").value = settings.trackContact || "";
+    document.getElementById("cfgAdminEmails").value = settings.adminEmails || "";
+    document.getElementById("cfgSmallPrice").value = settings.smallPrice;
+    document.getElementById("cfgBigPrice").value = settings.bigPrice;
+    document.getElementById("cfgSheetUrl").value = settings.sheetUrl || "";
+    document.getElementById("cfgAppUrl").value = settings.appUrl || "";
+    document.getElementById("cfgYocoEnabled").checked = !!settings.yocoEnabled;
+    document.getElementById("cfgNewPin").value = "";
+  }
+
+  document.getElementById("saveSettingsBtn").addEventListener("click", function () {
+    settings.trackName = document.getElementById("cfgTrackName").value.trim() || DEFAULTS.trackName;
+    settings.trackContact = document.getElementById("cfgTrackContact").value.trim();
+    settings.adminEmails = document.getElementById("cfgAdminEmails").value.trim();
+    settings.smallPrice = Number(document.getElementById("cfgSmallPrice").value) || 0;
+    settings.bigPrice = Number(document.getElementById("cfgBigPrice").value) || 0;
+    settings.sheetUrl = document.getElementById("cfgSheetUrl").value.trim();
+    settings.appUrl = document.getElementById("cfgAppUrl").value.trim();
+    settings.yocoEnabled = document.getElementById("cfgYocoEnabled").checked;
+
+    var newPin = document.getElementById("cfgNewPin").value.trim();
+    if (newPin) settings.pin = newPin;
+
+    saveSettingsToStorage();
+    applySettingsToUI();
+    refreshTotalDisplay();
+    updateYocoButtonVisibility();
+
+    showBanner("bannerAreaSettings", "Settings saved.", false);
+    setTimeout(function () { clearBanner("bannerAreaSettings"); }, 2000);
+  });
+
+  /* ============================================================
+     PREVENT ACCIDENTAL NAVIGATION AWAY MID-ENTRY
+     ============================================================ */
+  window.addEventListener("beforeunload", function (e) {
+    var activeCard = CARD_ORDER[currentCardIndex];
+    if (activeCard && activeCard !== "card1" && activeCard !== "card5") {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+
+  /* ============================================================
+     INIT
+     ============================================================ */
+  function init() {
+    applySettingsToUI();
+    setupQtyButtons();
+    refreshTotalDisplay();
+    updateYocoButtonVisibility();
+    goToCard("card1");
+    tryGetLocation();
+    console.log("MX Track Entry app initialized.");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>
