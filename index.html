@@ -510,6 +510,8 @@
 
     <div id="settingsUnlockedView" style="display:none;">
 
+      <div id="syncStatusBanner" class="banner show" style="margin-bottom:4px;"></div>
+
       <div class="settings-section-title">Track details</div>
       <label for="cfgTrackName">Track Name</label>
       <input type="text" id="cfgTrackName">
@@ -578,7 +580,18 @@
     pin: "1234"
   };
 
+  // These two stay local to each device — sheetUrl is needed *before* the
+  // app can ask Apps Script for anything else (chicken-and-egg), and pin
+  // staying local means a network outage can never lock a clerk out of
+  // their own device's Settings screen.
+  var LOCAL_ONLY_KEYS = ["sheetUrl", "pin"];
+
+  // Everything else is synced through Apps Script so every device shows
+  // the same track name, prices, contacts, etc. once one device saves them.
+  var SYNCED_KEYS = ["trackName", "trackContact", "adminEmails", "smallPrice", "bigPrice", "appUrl", "yocoEnabled"];
+
   var settings = loadSettings();
+  var settingsSyncStatus = "not-attempted"; // "not-attempted" | "synced" | "offline"
 
   var state = {
     vehicleReg: "",
@@ -595,8 +608,13 @@
   var currentCardIndex = 0;
 
   /* ============================================================
-     SETTINGS PERSISTENCE (localStorage)
-     ============================================================ */
+     SETTINGS PERSISTENCE
+     ============================================================
+     Local-only keys (sheetUrl, pin) live in localStorage always.
+     Synced keys are fetched from Apps Script on load (source of truth
+     across all devices), with the last-known copy cached in localStorage
+     as an offline fallback if the network or Apps Script is unreachable.
+  */
   function loadSettings() {
     try {
       var raw = localStorage.getItem("mxSettings");
@@ -616,6 +634,58 @@
     } catch (e) {
       console.warn("Could not save settings.", e);
     }
+  }
+
+  // Pulls the synced fields from Apps Script and overlays them onto the
+  // local cache. Called on startup and after a successful save elsewhere.
+  // Always resolves (never rejects) — a failure just means "stay on the
+  // cached values," so callers don't need their own try/catch.
+  function fetchSyncedSettings() {
+    if (!settings.sheetUrl) {
+      settingsSyncStatus = "not-attempted";
+      return Promise.resolve();
+    }
+    return fetch(settings.sheetUrl + "?action=getSettings")
+      .then(function (res) { return res.json(); })
+      .then(function (result) {
+        if (result.result === "success" && result.settings) {
+          SYNCED_KEYS.forEach(function (key) {
+            if (result.settings[key] !== undefined) {
+              settings[key] = result.settings[key];
+            }
+          });
+          saveSettingsToStorage(); // refresh the offline cache
+          settingsSyncStatus = "synced";
+        }
+      })
+      .catch(function (err) {
+        console.warn("Could not fetch synced settings, using cached values.", err);
+        settingsSyncStatus = "offline";
+      });
+  }
+
+  // Pushes the synced fields to Apps Script so other devices pick them up.
+  // Returns a promise so the caller can show a clear error if it fails —
+  // unlike fetchSyncedSettings, a failed save is something the person
+  // saving needs to know about immediately.
+  function pushSyncedSettings() {
+    if (!settings.sheetUrl) {
+      return Promise.reject(new Error("No backend URL configured — cannot sync settings."));
+    }
+    var payload = { action: "saveSettings" };
+    SYNCED_KEYS.forEach(function (key) { payload[key] = settings[key]; });
+
+    return fetch(settings.sheetUrl + "?action=saveSettings", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (result) {
+        if (result.result !== "success") {
+          throw new Error(result.message || "Settings save was rejected by the server.");
+        }
+      });
   }
 
   function applySettingsToUI() {
@@ -1207,13 +1277,37 @@
   document.getElementById("unlockSettingsBtn").addEventListener("click", function () {
     var entered = document.getElementById("settingsPin").value;
     if (entered === String(settings.pin)) {
-      populateSettingsForm();
       document.getElementById("settingsLockedView").style.display = "none";
       document.getElementById("settingsUnlockedView").style.display = "block";
+
+      populateSettingsForm();
+      renderSyncStatusBanner("checking");
+
+      fetchSyncedSettings().then(function () {
+        populateSettingsForm(); // re-populate with the freshest values, if any arrived
+        renderSyncStatusBanner(settingsSyncStatus);
+      });
     } else {
       setFieldError("settingsPin", true);
     }
   });
+
+  function renderSyncStatusBanner(status) {
+    var el = document.getElementById("syncStatusBanner");
+    if (status === "checking") {
+      el.className = "banner show";
+      el.innerHTML = '<span class="spinner" style="border-top-color:var(--accent); border-color:rgba(255,255,255,0.2);"></span>Checking for the latest settings…';
+    } else if (status === "synced") {
+      el.className = "banner show";
+      el.textContent = "✅ Showing the latest settings, synced across all devices.";
+    } else if (status === "offline") {
+      el.className = "banner show error";
+      el.textContent = "⚠️ Could not reach the server — showing this device's last-known settings. Changes you save now will sync once back online.";
+    } else {
+      el.className = "banner show error";
+      el.textContent = "⚠️ No backend URL set yet — settings will stay local to this device until one is added below.";
+    }
+  }
 
   function populateSettingsForm() {
     document.getElementById("cfgTrackName").value = settings.trackName || "";
@@ -1240,13 +1334,32 @@
     var newPin = document.getElementById("cfgNewPin").value.trim();
     if (newPin) settings.pin = newPin;
 
-    saveSettingsToStorage();
+    saveSettingsToStorage(); // always cache locally first, regardless of network
     applySettingsToUI();
     refreshTotalDisplay();
     updateYocoButtonVisibility();
 
-    showBanner("bannerAreaSettings", "Settings saved.", false);
-    setTimeout(function () { clearBanner("bannerAreaSettings"); }, 2000);
+    var saveBtn = document.getElementById("saveSettingsBtn");
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner"></span>Saving…';
+
+    pushSyncedSettings()
+      .then(function () {
+        showBanner("bannerAreaSettings", "Settings saved and synced to all devices.", false);
+      })
+      .catch(function (err) {
+        console.warn("Settings sync failed:", err);
+        showBanner(
+          "bannerAreaSettings",
+          "Saved on this device, but could not sync to other devices: " + err.message,
+          true
+        );
+      })
+      .finally(function () {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save Settings";
+        setTimeout(function () { clearBanner("bannerAreaSettings"); }, 4000);
+      });
   });
 
   /* ============================================================
@@ -1270,6 +1383,15 @@
     updateYocoButtonVisibility();
     goToCard("card1");
     tryGetLocation();
+
+    // Pull the latest shared settings (prices, contacts, etc.) from
+    // Apps Script, then refresh anything on screen that depends on them.
+    fetchSyncedSettings().then(function () {
+      applySettingsToUI();
+      refreshTotalDisplay();
+      updateYocoButtonVisibility();
+    });
+
     console.log("MX Track Entry app initialized.");
   }
 
